@@ -3,6 +3,9 @@ import path from 'node:path'
 import express from 'express'
 import compression from 'compression'
 import morgan from 'morgan'
+import pino from 'pino'
+import pinoHttp from 'pino-http'
+import { createNamespace } from 'cls-hooked'
 import cookieParser from 'cookie-parser'
 import cors from 'cors'
 import dotenv from 'dotenv'
@@ -29,6 +32,10 @@ const port = Number(process.env.PORT || 5173)
 
 async function createServer() {
   const app = express()
+  const ns = createNamespace('request')
+  const logger = pino({ level: process.env.LOG_LEVEL || (isProd ? 'info' : 'debug') })
+  app.use(pinoHttp({ logger, genReqId: (req) => (req.headers['x-request-id'] as string) || uuidv4() }))
+  app.use((req, _res, next) => ns.run(() => { ns.set('requestId', (req as any).id); next() }))
 
   if (process.env.SENTRY_DSN) {
     Sentry.init({ dsn: process.env.SENTRY_DSN, tracesSampleRate: 0.1 })
@@ -54,7 +61,7 @@ async function createServer() {
       directives: {
         "default-src": ["'self'"],
         "script-src": (req: any) => ["'self'", `'nonce-${req.cspNonce}'`, 'https:'],
-        "style-src": ["'self'", "'unsafe-inline'", 'https:'],
+        "style-src": ["'self'", 'https:', "'unsafe-inline'"],
         "img-src": ["'self'", 'data:', 'https:'],
         "font-src": ["'self'", 'https:', 'data:'],
         "connect-src": ["'self'", 'https:', 'ws:'],
